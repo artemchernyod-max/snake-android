@@ -22,7 +22,8 @@ jobs:
         run: |
           set -o pipefail
           gradle assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
-      - run: cp app/build/outputs/apk/release/app-release.apk snake.apk
+      - name: Rename APK
+        run: cp app/build/outputs/apk/release/app-release.apk snake.apk
       - uses: actions/upload-artifact@v4
         with:
           name: snake-apk
@@ -30,11 +31,12 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "v1.0.$GITHUB_RUN_NUMBER" snake.apk --title "Snake v1.0.$GITHUB_RUN_NUMBER" --notes "APK: snake.apk"
+        run: |
+          gh release create "v1.0.$GITHUB_RUN_NUMBER" snake.apk --title "Snake v1.0.$GITHUB_RUN_NUMBER" --notes "Snake game APK"
       - name: Report failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [ -f build.log ]; then grep -n -i -E 'error|fail|what went wrong|exception' build.log | head -n 80 > report.txt; echo '-----' >> report.txt; tail -n 120 build.log >> report.txt; else echo 'Build step did not run (failed before gradle).' > report.txt; fi
+          if [ -f build.log ]; then grep -n -i -E 'error|fail|what went wrong|exception' build.log | head -n 80 > report.txt; echo '-----' >> report.txt; tail -n 120 build.log >> report.txt; else echo 'Build step did not run.' > report.txt; fi
           gh issue create --title "Build failed #$GITHUB_RUN_NUMBER" --body-file report.txt
