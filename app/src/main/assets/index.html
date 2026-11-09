@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Змейка</title>
+<style>
+  :root{--bg:#FFFFFF;--surface:#F9F8F7;--line:#E6E5E3;--text:#2C2C2B;--muted:#7D7A75;--snake:#46A171;--food:#E56458;--accent:#2783DE}
+  @media (prefers-color-scheme:dark){:root{--bg:#191919;--surface:#202020;--line:rgba(255,255,255,.2);--text:#FFFFFF;--muted:rgba(255,255,255,.65);--snake:#72BC8F;--food:#E97366;--accent:#5E9FE8}}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;overscroll-behavior:none;touch-action:none;user-select:none}
+  main{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:24px 16px}
+  header{width:100%;max-width:420px;display:flex;justify-content:space-between;align-items:baseline}
+  h1{margin:0;font-size:24px;font-weight:700}
+  .score{color:var(--muted);font-size:16px}
+  .score b{color:var(--text)}
+  .board{position:relative;width:100%;max-width:420px;aspect-ratio:1;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+  canvas{width:100%;height:100%;display:block}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:color-mix(in srgb,var(--bg) 82%,transparent);text-align:center;padding:24px}
+  .overlay.hidden{display:none}
+  .overlay h2{margin:0;font-size:24px}
+  .overlay p{margin:0;color:var(--muted)}
+  button{font:inherit;cursor:pointer;border-radius:8px;min-width:44px;min-height:44px}
+  .primary{background:var(--accent);color:#fff;border:0;padding:10px 24px;font-weight:600}
+  .pad{display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(2,64px);gap:8px}
+  .pad button{background:var(--surface);color:var(--text);border:1px solid var(--line);font-size:24px}
+  .pad button:active{background:var(--line)}
+  .up{grid-column:2}.left{grid-column:1;grid-row:2}.down{grid-column:2;grid-row:2}.right{grid-column:3;grid-row:2}
+  .hint{color:var(--muted);font-size:14px;margin:0}
+</style>
+</head>
+<body>
+<main>
+  <header><h1>🐍 Змейка</h1><div class="score">Очки: <b id="score">0</b> · Рекорд: <b id="best">0</b></div></header>
+  <div class="board">
+    <canvas id="c" width="400" height="400" aria-label="Игровое поле"></canvas>
+    <div class="overlay" id="overlay">
+      <h2 id="title">Готовы?</h2>
+      <p id="msg">Свайпайте по полю или жмите стрелки</p>
+      <button class="primary" id="start">Играть</button>
+    </div>
+  </div>
+  <div class="pad" aria-label="Управление">
+    <button class="up" data-d="0,-1" aria-label="Вверх">▲</button>
+    <button class="left" data-d="-1,0" aria-label="Влево">◀</button>
+    <button class="down" data-d="0,1" aria-label="Вниз">▼</button>
+    <button class="right" data-d="1,0" aria-label="Вправо">▶</button>
+  </div>
+  <p class="hint">Тапните по полю — пауза</p>
+</main>
+<script>
+(() => {
+  const N = 20, c = document.getElementById('c'), x = c.getContext('2d'), S = c.width / N;
+  const $ = id => document.getElementById(id);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  let snake, dir, queue, food, score, best = +(localStorage.getItem('snakeBest') || 0), timer = null, running = false, over = false;
+  $('best').textContent = best;
+
+  function reset() {
+    snake = [{x: 9, y: 10}, {x: 8, y: 10}, {x: 7, y: 10}];
+    dir = {x: 1, y: 0}; queue = []; score = 0; $('score').textContent = 0; placeFood(); draw();
+  }
+  function placeFood() {
+    do { food = {x: Math.random() * N | 0, y: Math.random() * N | 0}; }
+    while (snake.some(s => s.x === food.x && s.y === food.y));
+  }
+  function turn(dx, dy) {
+    const last = queue.length ? queue[queue.length - 1] : dir;
+    if (dx === -last.x && dy === -last.y) return;
+    if (dx === last.x && dy === last.y) return;
+    if (queue.length < 3) queue.push({x: dx, y: dy});
+    if (!running && !over) start();
+  }
+  function speed() { return Math.max(70, 150 - score * 3); }
+  function tick() {
+    if (queue.length) dir = queue.shift();
+    const h = {x: snake[0].x + dir.x, y: snake[0].y + dir.y};
+    if (h.x < 0 || h.y < 0 || h.x >= N || h.y >= N || snake.some(s => s.x === h.x && s.y === h.y)) return end();
+    snake.unshift(h);
+    if (h.x === food.x && h.y === food.y) {
+      score++; $('score').textContent = score;
+      if (navigator.vibrate) navigator.vibrate(20);
+      placeFood(); clearInterval(timer); timer = setInterval(tick, speed());
+    } else snake.pop();
+    draw();
+  }
+  function rr(px, py, w, r) { x.beginPath(); x.roundRect ? x.roundRect(px, py, w, w, r) : x.rect(px, py, w, w); x.fill(); }
+  function draw() {
+    x.clearRect(0, 0, c.width, c.height);
+    x.fillStyle = css('--food'); rr(food.x * S + 3, food.y * S + 3, S - 6, S / 2);
+    x.fillStyle = css('--snake');
+    snake.forEach((s, i) => { x.globalAlpha = i === 0 ? 1 : Math.max(.55, 1 - i * .02); rr(s.x * S + 1, s.y * S + 1, S - 2, 5); });
+    x.globalAlpha = 1;
+  }
+  function start() {
+    if (over) { over = false; reset(); }
+    running = true; $('overlay').classList.add('hidden');
+    clearInterval(timer); timer = setInterval(tick, speed());
+  }
+  function pause() {
+    if (!running) return;
+    running = false; clearInterval(timer);
+    $('title').textContent = 'Пауза'; $('msg').textContent = 'Счёт: ' + score; $('start').textContent = 'Продолжить';
+    $('overlay').classList.remove('hidden');
+  }
+  function end() {
+    running = false; over = true; clearInterval(timer);
+    if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
+    if (score > best) { best = score; localStorage.setItem('snakeBest', best); $('best').textContent = best; }
+    $('title').textContent = 'Игра окончена'; $('msg').textContent = 'Ваш счёт: ' + score; $('start').textContent = 'Ещё раз';
+    $('overlay').classList.remove('hidden');
+  }
+
+  $('start').onclick = start;
+  document.querySelectorAll('.pad button').forEach(b => b.addEventListener('pointerdown', e => {
+    e.preventDefault(); const [dx, dy] = b.dataset.d.split(',').map(Number); turn(dx, dy);
+  }));
+  const keys = {ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], w: [0, -1], s: [0, 1], a: [-1, 0], d: [1, 0]};
+  addEventListener('keydown', e => {
+    if (keys[e.key]) { e.preventDefault(); turn(...keys[e.key]); }
+    else if (e.key === ' ') running ? pause() : start();
+  });
+  let t0 = null;
+  c.addEventListener('touchstart', e => { t0 = e.touches[0]; }, {passive: true});
+  c.addEventListener('touchend', e => {
+    if (!t0) return; const t = e.changedTouches[0], dx = t.clientX - t0.clientX, dy = t.clientY - t0.clientY; t0 = null;
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) { running ? pause() : start(); return; }
+    Math.abs(dx) > Math.abs(dy) ? turn(Math.sign(dx), 0) : turn(0, Math.sign(dy));
+  });
+  c.addEventListener('click', () => { if (!('ontouchstart' in window)) running ? pause() : null; });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) pause(); });
+  reset();
+})();
+</script>
+</body>
+</html>
